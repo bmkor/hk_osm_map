@@ -1,7 +1,7 @@
 # Using OSM Data to Create a SpatialPolygon of Hong Kong
 1.  Extract OSM data from [Mapzen](https://mapzen.com/data/metro-extracts)
 
-2.  We need `Coastlines(land)` in `Shapefile` format and `OSM2PGSQL` in `geojson` format ![Example Image](example.png)
+2.  We need `Coastlines(land)` in `Shapefile` format and `OSM2PGSQL` in `geojson` format ![Example Image](images/example.png)
 
 3.  Define `lands` to be the directory containing the `Shapefile` of `Coastlines(land)` and `lands_layer` to be the layer name of `Shapefile`
 
@@ -19,7 +19,7 @@ The last line is to transform the polygon to WGS84
 require(leaflet)
 leaflet() %>% addTiles() %>% addPolygons(data=lands)
 ```
-May look like this ![coastlines image](lands.png)
+May look like this ![coastlines image](images/lands.png)
 
 6.  Define `bdyPlyg` to be the `geojson` of `OSM2PGSQL` and load it as follows:
 ```
@@ -28,12 +28,12 @@ bdyPlyg<-geojson_read(bdyPlyg,what="sp") ## large file
 bdyPlyg<-spTransform(bdyPlyg,CRS("+init=epsg:4326"))
 ```
 
-7.  The boundary of Hong Kong can be found by restricting the `boundary` variable to be `administrative` and `name` to be `香港 Hong Kong` 
+7.  The boundary of Hong Kong can be found by restricting the `boundary` variable to be `administrative` and `name` to be `香港 Hong Kong`
 ```
 hkbdyplyg<-subset(bdyPlyg,boundary=="administrative" & name=="香港 Hong Kong")
 leaflet() %>% addTiles() %>% addPolygons(data=hkbdyplyg)
 ```
-May look like this ![boundary image](HKBoundary.png)
+May look like this ![boundary image](images/HKBoundary.png)
 
 8.  By first dissolving the interior boundaries in `land` and then intersecting it with `hkbdyplyg` as follows, we get
 ```
@@ -41,7 +41,7 @@ require(rgeos)
 hk<-gIntersection(hkbdyplyg,gUnaryUnion(lands))
 leaflet() %>% addTiles() %>% addPolygons(data=hk)
 ```
-![hkr image](HongKongR.png) (Note the isolated area in the NW corner)
+![hkr image](images/HongKongR.png) (Note the isolated area in the NW corner)
 
 9.  We need to remove the isolated area in the NW which is outside HK. But first, we break down the polygon to multi-polygons as follows:
 ```
@@ -69,7 +69,7 @@ hk<-gUnaryUnion(hkpolygons)
 leaflet() %>% addTiles() %>% addPolygons(data=hk)
 ```
 May look like this:
-![hk image](HongKong.png)
+![hk image](images/HongKong.png)
 
 10. Can we do better? There are some [reservoirs](https://en.wikipedia.org/wiki/List_of_reservoirs_of_Hong_Kong) in Hong Kong. Can we remove them?
 First, we filter reservoirs out as follows:
@@ -78,7 +78,7 @@ pools<-subset(bdyPlyg,(landuse %in% c("reservoir","pond") & !is.na(name) & is.na
 leaflet() %>% addTiles() %>%  addPolygons(data=pools, popup=~as.character(osm_id))
 ```
 May look like this:
-![pool image](pools.png)
+![pool image](images/pools.png)
 
 11. Remove the reservoirs and display it out
 ```
@@ -86,7 +86,7 @@ hk<-gDifference(hk,pools)
 leaflet() %>% addTiles() %>% addPolygons(data=hk)
 ```
 May look like this:
-![Hong Kong image](Hong_Kong.png)
+![Hong Kong image](images/Hong_Kong.png)
 Finally, export the polygon out:
 ```
 geojson_write(hk,file="Hong_Kong.geojson")
