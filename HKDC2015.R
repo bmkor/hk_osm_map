@@ -1,3 +1,4 @@
+require(leaflet)
 hk<-geojsonio::geojson_sp(geojson::from_geobuf("Hong_Kong.geobuf"))
 hk<-spTransform(hk,CRS("+init=epsg:4326"))
 m %>% addPolygons(data=hk)
@@ -30,8 +31,26 @@ hkdc2015<-do.call(rbind,lapply(levels(dc$CACODE),function(d){
   pg@polygons[[1]]@ID <- d
   pg
 }))
-dc$CACODE
+
 hkdc2015<-rgeos::gIntersection(dc,hk)
-m %>% addPolygons(data=hkdc2015)
+class(hkdc2015)
+dcdf<-do.call(rbind,lapply(1:length(hkdc2015@polygons),function(i){
+  id=hkdc2015@polygons[[i]]@ID
+}))
+
+dcdf<-data.frame(id=dcdf,row.names = dcdf)
+spg<-SpatialPolygonsDataFrame(hkdc2015,data=dcdf)
+m %>% addPolygons(data=spg, 
+                  popup=~id)
 
 geojson::to_geobuf(geojsonio::geojson_json(hkdc2015),file="Hong_Kong_2015DC.geobuf")
+
+rgeos::gIsValid(subset(spg, id == "T10"))
+
+m %>% addPolygons(data=subset(spg, id == "T10"))
+
+head(shp)
+
+m %>% addPolygons(data=dc,popup=~CACODE)
+
+

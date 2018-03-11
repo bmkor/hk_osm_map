@@ -2,12 +2,17 @@
 
 require(rgdal)
 dc<-readOGR("DC_2015_poly Shapefile/",layer="GIH3_DC_2015_POLY")
-proj4string(dc)<-CRS("+init=epsg:2326")
+
+
+#proj4string(dc)<-CRS("+init=epsg:2326")
+dc<-spTransform(dc,CRS("+init=epsg:2326"))
 dc<-spTransform(dc,CRS("+init=epsg:4326"))
 geojson::to_geobuf(geojsonio::geojson_json(dc),file="HKDC2015.geobuf")
 
 require(leaflet)
 require(leaflet.minicharts)
+
+
 
 m <- leaflet() %>% addTiles()
 
