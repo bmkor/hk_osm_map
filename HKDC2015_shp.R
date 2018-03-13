@@ -43,7 +43,8 @@ hkdc2015_lands<-do.call(rbind,lapply(1:length(hkdc2015@polygons),function(i){
   SpatialPolygonsDataFrame(ipg,hkdc2015@data[i,],match.ID = F)
 }))
 
-m %>% addPolygons(data=hkdc2015_lands,weight=1,popup=~CNAME)
+m %>% addPolygons(data=hkdc2015_lands,weight=1,popup=~CNAME) %>%
+  addPolygons(data=dsp,fill=F,color="black",weight=2)
 # geojson::to_geobuf(geojsonio::geojson_json(hkdc2015_lands,
 #                                            geometry="polygon"),
 #                    file="HKDC2015_coastlines.geobuf")
