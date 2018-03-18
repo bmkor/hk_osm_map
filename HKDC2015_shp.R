@@ -9,7 +9,7 @@ hkdc2015<-sp::spTransform(hkdc2015,CRS("+init=epsg:4326"))
 require(leaflet) 
 
 m <- leaflet() %>% 
-  addProviderTiles(providers$Esri.WorldStreetMap) 
+  addProviderTiles(providers$HikeBike) 
 
 spdf<-do.call(rbind,lapply(levels(hkdc2015$DISTRICT_E),function(d){
   cw<-subset(hkdc2015, DISTRICT_E == d) 
@@ -29,9 +29,11 @@ m %>% addPolygons(data=spdf,popup=~tc)
 
 hkcoastlines <- geojsonio::geojson_sp(geojson::from_geobuf("Hong_Kong.geobuf"))
 
-m %>% addPolygons(data=hkcoastlines)
+m %>% addPolygons(data=hkcoastlines, group="HK Coastlines") %>%
+  addPolygons(data=hkdc2015, color = "red", popup=~CNAME, group = "HKDC 2015") %>%
+  addLayersControl(overlayGroups = c("HK Coastlines","HKDC 2015"))
 
-m %>% addPolygons(data=hkdc2015, popup=~CNAME)
+#m %>% addPolygons(data=hkdc2015, popup=~CNAME)
 
 hkcoastlines<-spTransform(hkcoastlines,CRS("+init=epsg:4326"))
 
@@ -43,8 +45,16 @@ hkdc2015_lands<-do.call(rbind,lapply(1:length(hkdc2015@polygons),function(i){
   SpatialPolygonsDataFrame(ipg,hkdc2015@data[i,],match.ID = F)
 }))
 
-m %>% addPolygons(data=hkdc2015_lands,weight=1,popup=~CNAME) %>%
-  addPolygons(data=dsp,fill=F,color="black",weight=2)
+require(geosphere)
+
+
+
+hkdc2015_lands@data<-cbind(hkdc2015_lands@data,area=areaPolygon(hkdc2015_lands))
+
+m %>% addPolygons(data=hkdc2015_lands,weight=1,popup=~CACODE) %>%
+  addPolygons(data=dsp,fill=F,color="black",weight=2) %>%
+  addPolygons(data=hkdc2015,weight=1,fill=F,color="red")
+
 # geojson::to_geobuf(geojsonio::geojson_json(hkdc2015_lands,
 #                                            geometry="polygon"),
 #                    file="HKDC2015_coastlines.geobuf")
