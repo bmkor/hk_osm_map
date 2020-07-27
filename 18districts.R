@@ -8,6 +8,9 @@ require(mapview)
 #   download.file(destfile = "DC2015.zip") 
 # unzip(zipfile = "DC2015.zip")
 
+hkdc<-st_read("DC_2015_poly Shapefile/")
+
+
 hk<-st_read("DC_2015_poly Shapefile/") %>% 
   st_union() %>% 
   st_coordinates() %>%
@@ -21,6 +24,14 @@ hk<-st_read("DC_2015_poly Shapefile/") %>%
   st_sfc(crs=2326) 
 
 hk %>%  mapview()
+
+hkg <- st_read("Hong_Kong.geojson")
+hkg %>% mapview()
+
+hk<-hkg %>% st_transform(2326) %>% st_geometry() %>%
+  st_union(hk%>% st_geometry()) 
+
+hk %>% mapview()
 
 # tmp<-hk18DC %>%
 #   sf::st_transform(4326) %>%
@@ -55,11 +66,7 @@ hk %>%  mapview()
 # dc<-spTransform(dc,CRS("+init=epsg:4326"))
 # geojson::to_geobuf(geojsonio::geojson_json(dc),file="HKDC2015.geobuf")
 # 
-# require(leaflet)
-# require(leaflet.minicharts)
-# install.packages("osmar")
-# require(osmar)
-require(osmdata)
+# require(osmdata)
 
 ### download latest osm
 # "https://download.geofabrik.de/asia/china-latest.osm.pbf" %>%
@@ -90,6 +97,60 @@ oshk<-osmdata::osmdata_sf(q)
 qw<-opq(bbox = bbx) %>%
   add_osm_feature("natural","water") 
 oshkw<-osmdata::osmdata_sf(qw)
+
+oshkw$osm_lines %>% mapview()
+oshkw$osm_polygons %>% mapview()
+
+oshkw$osm_polygons %>%
+  filter(!is.na(natural) & !is.na(landuse)) %>% mapview()
+
+#### get bridges ####
+qb<-opq(bbox = bbx) %>%
+  add_osm_feature("man_made","bridge") 
+oshkb<-osmdata::osmdata_sf(qb)
+
+oshkb$osm_polygons %>% mapview() 
+ids<-c(640078678, 648423555, 660499374, 635348630, 636030220,635738131,636310292, 636329988, 636372554,
+       636372542, 636372542, 636372542, 636372541)
+
+wgb<-oshkb$osm_polygons %>%
+  filter(osm_id %in% ids) %>%
+  st_transform(2326) %>%
+  st_geometry() 
+
+
+oshkb$osm_multipolygons[3,] %>%
+  st_coordinates() %>% 
+  as_tibble() %>%
+  group_by(L1) %>%
+  group_map(~{
+    .x %>%
+      .[,1:2] %>%
+      as.matrix() %>%
+      list() %>%
+      st_polygon() %>%
+      st_sfc(crs=4326)
+  }) %>%
+  do.call(c,.) %>% mapview()
+
+
+#### get tunnel ####
+qt<-opq(bbox = hk %>% st_transform(4326) %>% st_bbox() %>% as.vector()) %>%
+  add_osm_feature("highway","motorway") 
+oshkt<-osmdata::osmdata_sf(qt)
+
+oshkt$osm_lines %>% mapview()
+#293134831
+
+#### get bridge ####
+ql<-opq(bbox = hk %>% st_transform(4326) %>% st_bbox() %>% as.vector()) %>%
+  add_osm_feature("highway","motorway_link") 
+oshkl<-osmdata::osmdata_sf(ql)
+
+oshkl$osm_lines %>% mapview()
+#26561048, 26561042
+#231190039, 636264059,479758268, 485543865,484465895
+#636270935, 637452820,374007815,484465898
 
 #### get coastlines with the region, rg ####
 w<-oshk$osm_lines %>% st_transform(2326) %>% st_geometry() %>% 
@@ -126,58 +187,63 @@ rm(i)
 
 #### rearrange the linestring to proper order #####
 
-require(tidygraph)
-require(lwgeom)
-wg<-w %>%
-  st_endpoint() %>%
-  st_equals(w %>% st_startpoint(),sparse = F) %>%
-  igraph::graph_from_adjacency_matrix(mode="directed") %>%
-  as_tbl_graph() %>%
-  mutate(n=1:length(w),
-         startpt=(w %>%
-                    st_startpoint() %>%
-                    st_equals(w %>% st_endpoint(),sparse = F) %>%
-                    apply(1,which) %>% sapply(function(x){length(x) == 0})),
-         geometry=w) %>%
-  morph(to_components) %>%
-  lapply(function(g){
-    gg<-g %>%
-      mutate(d=centrality_degree())
-    if(all(gg %>% pull(d) == 1)){
-      # cycle -> polygon
-      ig<-gg %>%
-        as.igraph()
-      ngs<-ig %>%
-        igraph::neighborhood(nodes=1) %>% unlist()
-      e<-ngs %>%
-        lapply(function(v){
-          ig %>%
-            igraph::all_simple_paths(from=1,to=v) %>%
-            unlist()
-        })
-      wh<-e %>% sapply(length) %>% magrittr::equals(ig %>% igraph::V(.) %>% length()) %>% which()
-      idx<-e[[wh]] %>% unlist() %>% as.vector()
-      gg %>%
-        as_tibble() %>%
-        st_as_sf() %>%
-        .[idx,] %>% st_coordinates() %>%
-        .[,1:2] %>% list() %>% 
-        st_polygon() %>% st_sfc(crs=w %>% st_crs())
-    } else{
-      # linestring
-      s<-gg %>% pull(startpt) %>% which()
-      t<-gg %>% pull(d) %>% magrittr::equals(0) %>% which()
-      idx<-(gg %>%
-              as.igraph() %>%
-              igraph::all_shortest_paths(from=s,to=t) %>%
-              .$res %>% unlist())
-      gg %>%
-        as_tibble() %>%
-        st_as_sf() %>%
-        .[idx,] %>% st_coordinates() %>%
-        .[,1:2] %>% st_linestring() %>% st_sfc(crs=w %>% st_crs())
-    }
-  })
+reorder<-function(w){
+  require(tidygraph)
+  require(lwgeom)
+  w %>%
+    st_endpoint() %>%
+    st_equals(w %>% st_startpoint(),sparse = F) %>%
+    igraph::graph_from_adjacency_matrix(mode="directed") %>%
+    as_tbl_graph() %>%
+    mutate(n=1:length(w),
+           startpt=(w %>%
+                      st_startpoint() %>%
+                      st_equals(w %>% st_endpoint(),sparse = F) %>%
+                      apply(1,which) %>% sapply(function(x){length(x) == 0})),
+           geometry=w) %>%
+    morph(to_components) %>%
+    lapply(function(g){
+      gg<-g %>%
+        mutate(d=centrality_degree())
+      if(all(gg %>% pull(d) == 1)){
+        # cycle -> polygon
+        ig<-gg %>%
+          as.igraph()
+        ngs<-ig %>%
+          igraph::neighborhood(nodes=1) %>% unlist()
+        e<-ngs %>%
+          lapply(function(v){
+            ig %>%
+              igraph::all_simple_paths(from=1,to=v) %>%
+              unlist()
+          })
+        wh<-e %>% sapply(length) %>% magrittr::equals(ig %>% igraph::V(.) %>% length()) %>% which()
+        idx<-e[[wh]] %>% unlist() %>% as.vector()
+        gg %>%
+          as_tibble() %>%
+          st_as_sf() %>%
+          .[idx,] %>% st_coordinates() %>%
+          .[,1:2] %>% list() %>% 
+          st_polygon() %>% st_sfc(crs=w %>% st_crs())
+      } else{
+        # linestring
+        s<-gg %>% pull(startpt) %>% which()
+        t<-gg %>% pull(d) %>% magrittr::equals(0) %>% which()
+        idx<-(gg %>%
+                as.igraph() %>%
+                igraph::all_shortest_paths(from=s,to=t) %>%
+                .$res %>% unlist())
+        gg %>%
+          as_tibble() %>%
+          st_as_sf() %>%
+          .[idx,] %>% st_coordinates() %>%
+          .[,1:2] %>% st_linestring() %>% st_sfc(crs=w %>% st_crs())
+      }
+    })
+  
+}
+
+wg<-reorder(w)
 
 wg %>% sapply(st_geometry_type) %>%
   magrittr::equals("LINESTRING") %>% which()
@@ -198,13 +264,51 @@ wg[[20]]<-wg[[20]] %>%
 wg<-wg[-15] %>% 
   do.call(c,.)
 
+wgi<-oshk$osm_polygons %>%
+  filter( is.na(man_made)) %>%
+  st_transform(2326) %>%
+  st_geometry() 
+
+wgg<-wg %>%
+  c(.,wgb,wgi) 
+
+wgg %>%
+  mapview()
+
 rgc<-rg
-for(i in 1:length(wg)){
+for(i in 1:length(wgg)){
   rgc<-rgc %>%
-    st_difference(wg[i])
+    st_difference(wgg[i])
 }
 
 rgc %>% mapview()
+
+wgg %>% 
+  st_intersection(hk) %>%
+  st_as_sf() %>% mapview()
+
+tmp<-wgg %>% 
+  st_intersection(hk)
+
+
+wg[2] %>% mapview()
+
+wg[2] %>%
+  st_difference(hk) %>% mapview()
+
+bbx=c(113.75,22.1,114.6,22.7)
+rg<-st_bbox(c(xmin=113.75,ymin=22.1,xmax=114.6,ymax=22.7)) %>%
+  st_as_sfc() %>% st_set_crs(4326) %>% st_transform(2326)
+
+bbx=c(113.81,22.12,114.42,22.7)
+st_bbox(c(xmin=113.81,ymin=22.12,xmax=114.42,ymax=22.68)) %>%
+  st_as_sfc() %>% st_set_crs(4326) %>% st_transform(2326) %>% mapview()
+
+
+
+wg %>% mapview()
+
+
 # 
 # 
 # ww2 %>%
